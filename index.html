@@ -1,22 +1,586 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Property Tax Assessment Tool</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css"/>
-    <link rel="stylesheet" href="styles.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Building Footprint Tool</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+  <style>
+    /* Global Styles */
+    body, html {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      font-family: Arial, sans-serif;
+      background-color: #f4f6f8;
+    }
+    .container {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+    .header {
+      background-color: #2c3e50;
+      color: #ecf0f1;
+      padding: 15px;
+      text-align: center;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+      font-size: 1.2rem;
+    }
+    .content {
+      flex: 1;
+      display: flex;
+      position: relative;
+      overflow: hidden;
+    }
+    #map-container {
+      flex: 1;
+      height: 100%;
+    }
+    /* Sidebar Panel */
+    #drawing-panel {
+      width: 320px;
+      padding: 15px;
+      background-color: #ffffff;
+      border-left: 1px solid #ddd;
+      display: flex;
+      flex-direction: column;
+      box-shadow: -2px 0 5px rgba(0,0,0,0.1);
+      overflow-y: auto;
+    }
+    .instruction {
+      background-color: #fef9e7;
+      padding: 10px;
+      border-left: 4px solid #f1c40f;
+      margin-bottom: 15px;
+      font-size: 14px;
+    }
+    .input-group, .drawing-mode-select, .layer-control, .zoom-controls, .mode-toggle {
+      margin-bottom: 15px;
+    }
+    .input-group label, .layer-control label, .drawing-mode-select label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+      font-size: 13px;
+    }
+    .input-group input, .layer-control select {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 13px;
+    }
+    button {
+      padding: 10px;
+      margin-bottom: 10px;
+      background-color: #3498db;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: background-color 0.2s ease;
+    }
+    button:hover {
+      background-color: #2980b9;
+    }
+    .cancel-btn {
+      background-color: #e74c3c;
+    }
+    .cancel-btn:hover {
+      background-color: #c0392b;
+    }
+    .active-button {
+      background-color: #27ae60;
+    }
+    .coordinate-display {
+      margin-top: auto;
+      padding: 10px;
+      background-color: #e8f4fc;
+      border-radius: 4px;
+      font-size: 13px;
+      text-align: center;
+    }
+    .zoom-controls {
+      display: flex;
+      gap: 5px;
+    }
+    .zoom-btn {
+      flex: 1;
+      padding: 8px;
+      font-size: 13px;
+    }
+    .drawing-mode-select div {
+      margin-bottom: 5px;
+    }
+    .drawing-mode-select input {
+      margin-right: 5px;
+    }
+    /* Responsive Styles */
+    @media (max-width: 768px) {
+      .content {
+        flex-direction: column;
+      }
+      #drawing-panel {
+        width: 100%;
+        border-left: none;
+        border-top: 1px solid #ddd;
+        box-shadow: 0 -2px 5px rgba(0,0,0,0.1);
+      }
+      .header {
+        font-size: 1rem;
+      }
+    }
+    @media (max-width: 480px) {
+      .header {
+        padding: 10px;
+        font-size: 0.9rem;
+      }
+      #drawing-panel {
+        padding: 10px;
+      }
+      button, .zoom-btn {
+        padding: 8px;
+        font-size: 12px;
+      }
+      .instruction, .input-group label, .layer-control label, .drawing-mode-select label {
+        font-size: 12px;
+      }
+      .input-group input, .layer-control select {
+        font-size: 12px;
+      }
+    }
+  </style>
 </head>
 <body>
-    <div id="map" style="width: 100%; height: 600px;"></div>
-    <div id="form-modal" class="modal">
-        <form id="property-form">
-            <input type="file" id="building-photo" accept="image/*">
-            <input type="file" id="owner-photo" accept="image/*">
-            <input type="text" id="owner-name" placeholder="Owner Name">
-            <input type="text" id="property-address" placeholder="Property Address">
-            <button type="submit">Submit</button>
-        </form>
+  <div class="container">
+    <div class="header">
+      <h2>Building Footprint Tool</h2>
     </div>
-    <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
-    <script src="app.js"></script>
+    
+    <div class="content">
+      <!-- Map Container -->
+      <div id="map-container"></div>
+      
+      <!-- Drawing Panel -->
+      <div id="drawing-panel">
+        <div class="instruction" id="instruction">
+          Select a drawing mode and click on the map to begin.
+        </div>
+        
+        <!-- Drawing Mode Selector -->
+        <div class="drawing-mode-select">
+          <label>Select Drawing Mode:</label>
+          <div>
+            <input type="radio" id="mode-footprint" name="drawing-mode" value="footprint" checked>
+            <label for="mode-footprint">Building Footprint (Orthogonal)</label>
+          </div>
+          <div>
+            <input type="radio" id="mode-traditional" name="drawing-mode" value="traditional">
+            <label for="mode-traditional">Traditional Polygon Drawing</label>
+          </div>
+        </div>
+        
+        <!-- Layer Control -->
+        <div class="layer-control">
+          <label for="layer-select">Map Layer:</label>
+          <select id="layer-select">
+            <option value="street">Street Map</option>
+            <option value="satellite">Satellite Imagery</option>
+            <option value="hybrid">Hybrid (Satellite + Labels)</option>
+          </select>
+        </div>
+        
+        <!-- Zoom Controls -->
+        <div class="zoom-controls">
+          <button id="zoom-in-btn" class="zoom-btn">Zoom In</button>
+          <button id="zoom-out-btn" class="zoom-btn">Zoom Out</button>
+        </div>
+        
+        <!-- Orthogonal Mode Toggle (only for footprint mode) -->
+        <div class="mode-toggle" id="ortho-toggle">
+          <input type="checkbox" id="ortho-mode" checked>
+          <label for="ortho-mode">Orthogonal Mode (90° angles)</label>
+        </div>
+        
+        <!-- Wall Length Input (only for footprint mode) -->
+        <div class="input-group" id="wall-length-group">
+          <label for="wall-length">Wall Length (meters):</label>
+          <input type="number" id="wall-length" value="5" min="0.1" step="0.1">
+        </div>
+        
+        <!-- Control Buttons -->
+        <button id="draw-mode-btn">Start Drawing</button>
+        <button id="add-point-btn" disabled>Add Wall</button>
+        <button id="complete-btn" disabled>Complete Building</button>
+        <button id="cancel-btn" class="cancel-btn" disabled>Cancel</button>
+        
+        <div class="coordinate-display" id="coordinate-display">
+          Click on the map to see coordinates
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // DOM Elements
+    const mapContainer = document.getElementById('map-container');
+    const instructionEl = document.getElementById('instruction');
+    const coordDisplay = document.getElementById('coordinate-display');
+    const drawModeBtn = document.getElementById('draw-mode-btn');
+    const addPointBtn = document.getElementById('add-point-btn');
+    const completeBtn = document.getElementById('complete-btn');
+    const cancelBtn = document.getElementById('cancel-btn');
+    const lengthInput = document.getElementById('wall-length');
+    const orthoModeCheckbox = document.getElementById('ortho-mode');
+    const wallLengthGroup = document.getElementById('wall-length-group');
+    const orthoToggle = document.getElementById('ortho-toggle');
+    const layerSelect = document.getElementById('layer-select');
+    const zoomInBtn = document.getElementById('zoom-in-btn');
+    const zoomOutBtn = document.getElementById('zoom-out-btn');
+
+    // Initialize map with higher zoom level for small areas
+    const map = L.map('map-container').setView([21.1458, 79.0882], 18);
+
+    // Define base layers
+    const baseLayers = {
+      street: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
+        maxZoom: 22
+      }),
+      satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: 'Imagery &copy; Esri',
+        maxZoom: 22
+      }),
+      hybrid: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: 'Imagery &copy; Esri',
+        maxZoom: 22
+      })
+    };
+
+    // Add default layer
+    baseLayers.street.addTo(map);
+
+    // Application state
+    const state = {
+      mode: 'view',           // 'view' or 'draw'
+      drawingMode: 'start',   // 'start' or 'continue'
+      drawingTool: 'footprint', // 'footprint' or 'traditional'
+      vertices: [],           // Array of [lng, lat]
+      polyline: null,         // Leaflet polyline
+      currentMarker: null,    // Current point marker
+      previewLine: null,      // Preview line
+      isOrthoMode: true,      // Orthogonal mode flag
+      currentLayer: 'street'  // Current selected layer
+    };
+
+    // Update UI elements based on selected drawing tool
+    function updateToolUI() {
+      if (state.drawingTool === 'footprint') {
+        orthoToggle.style.display = 'block';
+        wallLengthGroup.style.display = 'block';
+        addPointBtn.disabled = false;
+      } else {
+        orthoToggle.style.display = 'none';
+        wallLengthGroup.style.display = 'none';
+        addPointBtn.disabled = true;
+      }
+    }
+
+    // Listen for drawing mode radio button changes
+    document.getElementsByName('drawing-mode').forEach(radio => {
+      radio.addEventListener('change', function() {
+        state.drawingTool = this.value;
+        updateToolUI();
+        if (state.mode === 'draw') {
+          instructionEl.textContent = state.drawingTool === 'footprint' ?
+            'Click on the map to start a new building footprint.' :
+            'Click on the map to start drawing your polygon.';
+        }
+      });
+    });
+
+    // Event listeners for map and buttons
+    map.on('click', handleMapClick);
+    map.on('mousemove', handleMouseMove);
+    drawModeBtn.addEventListener('click', toggleDrawMode);
+    addPointBtn.addEventListener('click', addWall);
+    completeBtn.addEventListener('click', completeDrawing);
+    cancelBtn.addEventListener('click', cancelDrawing);
+    orthoModeCheckbox.addEventListener('change', () => {
+      state.isOrthoMode = orthoModeCheckbox.checked;
+    });
+    layerSelect.addEventListener('change', changeMapLayer);
+    zoomInBtn.addEventListener('click', () => map.zoomIn());
+    zoomOutBtn.addEventListener('click', () => map.zoomOut());
+
+    // Initialize state
+    state.isOrthoMode = orthoModeCheckbox.checked;
+    updateToolUI();
+
+    // Change map layer
+    function changeMapLayer() {
+      const selectedLayer = layerSelect.value;
+      map.removeLayer(baseLayers[state.currentLayer]);
+      baseLayers[selectedLayer].addTo(map);
+      state.currentLayer = selectedLayer;
+    }
+
+    // Handle map click based on drawing tool
+    function handleMapClick(e) {
+      updateCoordinateDisplay(e.latlng);
+      if (state.mode !== 'draw') return;
+      if (state.drawingTool === 'footprint') {
+        if (state.drawingMode === 'start') {
+          startNewBuilding(e.latlng);
+        } else if (state.drawingMode === 'continue') {
+          setWallDirection(e.latlng);
+        }
+      } else if (state.drawingTool === 'traditional') {
+        if (state.drawingMode === 'start') {
+          startTraditionalDrawing(e.latlng);
+        } else if (state.drawingMode === 'continue') {
+          addTraditionalVertex(e.latlng);
+        }
+      }
+    }
+
+    // Handle mouse movement on map (only for footprint preview)
+    function handleMouseMove(e) {
+      updateCoordinateDisplay(e.latlng);
+      if (state.mode === 'draw' && state.drawingTool === 'footprint' && state.drawingMode === 'continue' && state.vertices.length > 0) {
+        showPreviewLine(e.latlng);
+      }
+    }
+
+    // Update coordinate display
+    function updateCoordinateDisplay(latlng) {
+      coordDisplay.textContent = `Lat: ${latlng.lat.toFixed(6)}, Lng: ${latlng.lng.toFixed(6)}`;
+    }
+
+    // Toggle drawing mode (Start/Cancel)
+    function toggleDrawMode() {
+      if (state.mode === 'view') {
+        state.mode = 'draw';
+        state.drawingMode = 'start';
+        drawModeBtn.textContent = 'Drawing Mode (Active)';
+        drawModeBtn.classList.add('active-button');
+        cancelBtn.disabled = false;
+        completeBtn.disabled = false;
+        addPointBtn.disabled = (state.drawingTool === 'traditional');
+        instructionEl.textContent = state.drawingTool === 'footprint' ?
+          'Click on the map to start a new building footprint.' :
+          'Click on the map to start drawing your polygon.';
+      } else {
+        cancelDrawing();
+      }
+    }
+
+    // ===============================
+    // Orthogonal Building Footprint Mode
+    // ===============================
+    function startNewBuilding(latlng) {
+      clearDrawing();
+      const point = [latlng.lng, latlng.lat];
+      state.vertices.push(point);
+      state.currentMarker = L.marker(latlng).addTo(map);
+      state.polyline = L.polyline([latlng], { color: 'blue', weight: 3 }).addTo(map);
+      state.drawingMode = 'continue';
+      addPointBtn.disabled = false;
+      completeBtn.disabled = false;
+      instructionEl.textContent = 'Click on the map to set wall direction or use the "Add Wall" button.';
+    }
+
+    function setWallDirection(latlng) {
+      if (state.vertices.length === 0) return;
+      const lastVertex = state.vertices[state.vertices.length - 1];
+      const lastLatlng = L.latLng(lastVertex[1], lastVertex[0]);
+      let angle = getAngle(lastLatlng, latlng);
+      if (state.isOrthoMode) {
+        if (state.vertices.length === 1) {
+          angle = Math.round(angle / 90) * 90;
+        } else {
+          const prevVertex = state.vertices[state.vertices.length - 2];
+          const prevLatlng = L.latLng(prevVertex[1], prevVertex[0]);
+          const prevAngle = getAngle(prevLatlng, lastLatlng);
+          const perp1 = (prevAngle + 90) % 360;
+          const perp2 = (prevAngle - 90 + 360) % 360;
+          const diff1 = Math.abs(((angle % 360) + 360) % 360 - perp1);
+          const diff2 = Math.abs(((angle % 360) + 360) % 360 - perp2);
+          angle = (diff1 < diff2) ? perp1 : perp2;
+        }
+      }
+      const length = parseFloat(lengthInput.value) || 5;
+      const endpoint = calculateEndpoint(lastLatlng, length, angle);
+      addNewVertex(endpoint);
+    }
+
+    function addWall() {
+      if (state.vertices.length === 0) return;
+      const lastVertex = state.vertices[state.vertices.length - 1];
+      const lastLatlng = L.latLng(lastVertex[1], lastVertex[0]);
+      let angle = 90;
+      if (state.vertices.length > 1) {
+        const prevVertex = state.vertices[state.vertices.length - 2];
+        const prevLatlng = L.latLng(prevVertex[1], prevVertex[0]);
+        const prevAngle = getAngle(prevLatlng, lastLatlng);
+        angle = (prevAngle + 90) % 360;
+      }
+      const length = parseFloat(lengthInput.value) || 5;
+      const endpoint = calculateEndpoint(lastLatlng, length, angle);
+      addNewVertex(endpoint);
+    }
+
+    function showPreviewLine(mouseLatlng) {
+      if (state.previewLine) {
+        map.removeLayer(state.previewLine);
+      }
+      if (state.vertices.length === 0) return;
+      const lastVertex = state.vertices[state.vertices.length - 1];
+      const lastLatlng = L.latLng(lastVertex[1], lastVertex[0]);
+      let angle = getAngle(lastLatlng, mouseLatlng);
+      if (state.isOrthoMode) {
+        if (state.vertices.length === 1) {
+          angle = Math.round(angle / 90) * 90;
+        } else {
+          const prevVertex = state.vertices[state.vertices.length - 2];
+          const prevLatlng = L.latLng(prevVertex[1], prevVertex[0]);
+          const prevAngle = getAngle(prevLatlng, lastLatlng);
+          const perp1 = (prevAngle + 90) % 360;
+          const perp2 = (prevAngle - 90 + 360) % 360;
+          const diff1 = Math.abs(((angle % 360) + 360) % 360 - perp1);
+          const diff2 = Math.abs(((angle % 360) + 360) % 360 - perp2);
+          angle = (diff1 < diff2) ? perp1 : perp2;
+        }
+      }
+      const length = parseFloat(lengthInput.value) || 5;
+      const endpoint = calculateEndpoint(lastLatlng, length, angle);
+      state.previewLine = L.polyline([lastLatlng, endpoint], {
+        color: 'green',
+        dashArray: '5, 5',
+        weight: 2
+      }).addTo(map);
+    }
+
+    function calculateEndpoint(startPoint, lengthMeters, angleDegrees) {
+      const earthRadius = 6371000;
+      const angleRadians = angleDegrees * Math.PI / 180;
+      const startLat = startPoint.lat * Math.PI / 180;
+      const startLng = startPoint.lng * Math.PI / 180;
+      const new_lat = Math.asin(
+        Math.sin(startLat) * Math.cos(lengthMeters / earthRadius) +
+        Math.cos(startLat) * Math.sin(lengthMeters / earthRadius) * Math.cos(angleRadians)
+      );
+      const new_lng = startLng + Math.atan2(
+        Math.sin(angleRadians) * Math.sin(lengthMeters / earthRadius) * Math.cos(startLat),
+        Math.cos(lengthMeters / earthRadius) - Math.sin(startLat) * Math.sin(new_lat)
+      );
+      return L.latLng(new_lat * 180 / Math.PI, new_lng * 180 / Math.PI);
+    }
+
+    function getAngle(p1, p2) {
+      const dLat = p2.lat - p1.lat;
+      const dLng = p2.lng - p1.lng;
+      let angle = Math.atan2(dLng, dLat) * 180 / Math.PI;
+      if (angle < 0) angle += 360;
+      return angle;
+    }
+
+    function addNewVertex(latlng) {
+      state.vertices.push([latlng.lng, latlng.lat]);
+      state.polyline.addLatLng(latlng);
+      state.currentMarker.setLatLng(latlng);
+      instructionEl.textContent = state.drawingTool === 'footprint' ?
+        'Click on the map to set next wall direction or use the "Add Wall" button.' :
+        'Click on the map to add next point or click "Complete Building" when done.';
+    }
+
+    // ===============================
+    // Traditional Polygon Drawing Mode
+    // ===============================
+    function startTraditionalDrawing(latlng) {
+      clearDrawing();
+      const point = [latlng.lng, latlng.lat];
+      state.vertices.push(point);
+      state.currentMarker = L.marker(latlng).addTo(map);
+      state.polyline = L.polyline([latlng], { color: 'blue', weight: 3 }).addTo(map);
+      state.drawingMode = 'continue';
+      instructionEl.textContent = 'Click on the map to add vertices. Click "Complete Building" when finished.';
+    }
+
+    function addTraditionalVertex(latlng) {
+      addNewVertex(latlng);
+    }
+
+    // ===============================
+    // Common Functions for Both Modes
+    // ===============================
+    function completeDrawing() {
+      if (state.vertices.length < 3) {
+        alert('A polygon requires at least 3 points. Please add more vertices.');
+        return;
+      }
+      const firstVertex = state.vertices[0];
+      const firstLatlng = L.latLng(firstVertex[1], firstVertex[0]);
+      const lastVertex = state.vertices[state.vertices.length - 1];
+      const lastLatlng = L.latLng(lastVertex[1], lastVertex[0]);
+      if (firstLatlng.distanceTo(lastLatlng) > 1) {
+        state.polyline.addLatLng(firstLatlng);
+      }
+      const points = state.vertices.map(v => [v[1], v[0]]);
+      const polygon = L.polygon(points, {
+        color: 'blue',
+        fillColor: '#3388ff',
+        fillOpacity: 0.3,
+        weight: 2
+      }).addTo(map);
+      const area = calculateArea(points);
+      polygon.bindPopup(`Area: ${area.toFixed(2)} sq m`).openPopup();
+      clearDrawing();
+      resetUI();
+      instructionEl.textContent = 'Polygon completed. Click "Start Drawing" to create another.';
+    }
+
+    function calculateArea(points) {
+      let area = 0;
+      for (let i = 0; i < points.length; i++) {
+        const j = (i + 1) % points.length;
+        area += points[i][0] * points[j][1];
+        area -= points[j][0] * points[i][1];
+      }
+      const earthRadius = 6371000;
+      area = Math.abs(area) * (Math.PI / 180) ** 2 * earthRadius * earthRadius * Math.cos(points[0][0] * Math.PI / 180) / 2;
+      return area;
+    }
+
+    function clearDrawing() {
+      if (state.polyline) map.removeLayer(state.polyline);
+      if (state.currentMarker) map.removeLayer(state.currentMarker);
+      if (state.previewLine) map.removeLayer(state.previewLine);
+      state.vertices = [];
+      state.polyline = null;
+      state.currentMarker = null;
+      state.previewLine = null;
+    }
+
+    function cancelDrawing() {
+      clearDrawing();
+      resetUI();
+      instructionEl.textContent = 'Drawing canceled. Click "Start Drawing" to begin a new drawing.';
+    }
+
+    function resetUI() {
+      state.mode = 'view';
+      state.drawingMode = 'start';
+      drawModeBtn.textContent = 'Start Drawing';
+      drawModeBtn.classList.remove('active-button');
+      addPointBtn.disabled = (state.drawingTool === 'traditional');
+      completeBtn.disabled = true;
+      cancelBtn.disabled = true;
+    }
+  </script>
 </body>
 </html>
+
